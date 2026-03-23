@@ -43,10 +43,11 @@ interface ListItem {
   url: string;
 }
 
-// In-memory cache
+// ── Cache ──
 let cachedMachines: Machine[] | null = null;
 let cacheTimestamp = 0;
 const CACHE_TTL = 10 * 60 * 1000; // 10 minutes
+let isRefreshing = false;
 
 async function fetchPage(url: string): Promise<string> {
   const res = await fetch(url);
@@ -73,7 +74,6 @@ function parseListPage(html: string): ListItem[] {
     const price = priceText.replace(/[^\d]/g, "");
     const thumbnail = $el.find("img").attr("src") || "";
 
-    // Category slugs from CSS classes (exclude "grid-item")
     const classes = ($el.attr("class") || "").split(/\s+/).filter(
       (c) => c !== "grid-item" && c !== ""
     );
@@ -101,7 +101,6 @@ function parsePageCount(html: string): number {
 function parseDetailPage(html: string, adId: number): Partial<Machine> {
   const $ = cheerio.load(html);
 
-  // Pictures
   const pictures: { url: string; date: string }[] = [];
   $("a.my-image-links").each((_, el) => {
     const href = $(el).attr("href");
@@ -110,13 +109,11 @@ function parseDetailPage(html: string, adId: number): Partial<Machine> {
     }
   });
 
-  // Description
   const descriptionDiv = $(".fieldset").filter((_, el) => {
     return $(el).find("h3.title").text().trim() === "Beskrivelse";
   });
   const description = descriptionDiv.find("div").first().html()?.trim() || "";
 
-  // Facts from data-list
   const facts: Record<string, string> = {};
   $(".data-list li").each((_, el) => {
     const key = $(el).find("strong").text().trim();
@@ -126,20 +123,14 @@ function parseDetailPage(html: string, adId: number): Partial<Machine> {
     }
   });
 
-  const year = facts["Årgang"] || "";
-  const brand = facts["Fabrikat"] || "";
-  const model = facts["Model"] || "";
-  const contact = facts["Kontaktperson"] || "";
-  const address = facts["Adresse"] || "";
-
   return {
-    year,
-    brand,
-    model,
+    year: facts["Årgang"] || "",
+    brand: facts["Fabrikat"] || "",
+    model: facts["Model"] || "",
     description,
     pictures,
-    contact,
-    address,
+    contact: facts["Kontaktperson"] || "",
+    address: facts["Adresse"] || "",
   };
 }
 
@@ -169,62 +160,123 @@ async function fetchAllListItems(): Promise<ListItem[]> {
   return [...firstPageItems, ...otherResults.flat()];
 }
 
+function listItemToMachine(item: ListItem): Machine {
+  return {
+    id: item.adId,
+    ad_id: item.adId,
+    sku: item.adId,
+    company_id: "1066",
+    title: item.title,
+    model: item.title,
+    brand: "",
+    year: "",
+    price: item.price,
+    currency: "DKK",
+    url: item.url,
+    pictures: item.thumbnail ? [{ url: item.thumbnail, date: "" }] : [],
+    category: buildCategories(item.categorySlugs),
+    description: "",
+    contact: "",
+    address: "",
+    extra_parameters: {},
+  };
+}
+
+async function refreshCache(): Promise<void> {
+  if (isRefreshing) return;
+  isRefreshing = true;
+
+  try {
+    console.log("[scraper] Fetching machine list...");
+    const listItems = await fetchAllListItems();
+
+    // Phase 1: Immediately cache basic list data so API responds fast
+    if (!cachedMachines) {
+      cachedMachines = listItems.map(listItemToMachine);
+      cacheTimestamp = Date.now();
+      console.log(`[scraper] Quick cache ready: ${cachedMachines.length} machines (list only)`);
+    }
+
+    // Phase 2: Enrich with detail pages in parallel batches
+    const BATCH_SIZE = 15;
+    const machines: Machine[] = [];
+
+    for (let i = 0; i < listItems.length; i += BATCH_SIZE) {
+      const batch = listItems.slice(i, i + BATCH_SIZE);
+      const details = await Promise.all(
+        batch.map(async (item) => {
+          try {
+            const html = await fetchPage(`${FEED_BASE}?ad_id=${item.adId}`);
+            return parseDetailPage(html, item.adId);
+          } catch {
+            return {} as Partial<Machine>;
+          }
+        })
+      );
+
+      batch.forEach((item, idx) => {
+        const detail = details[idx];
+        const pics = detail.pictures && detail.pictures.length > 0
+          ? detail.pictures
+          : item.thumbnail ? [{ url: item.thumbnail, date: "" }] : [];
+
+        machines.push({
+          id: item.adId,
+          ad_id: item.adId,
+          sku: item.adId,
+          company_id: "1066",
+          title: item.title,
+          model: detail.model || item.title,
+          brand: detail.brand || "",
+          year: detail.year || "",
+          price: item.price,
+          currency: "DKK",
+          url: item.url,
+          pictures: pics,
+          category: buildCategories(item.categorySlugs),
+          description: detail.description || "",
+          contact: detail.contact || "",
+          address: detail.address || "",
+          extra_parameters: {},
+        });
+      });
+    }
+
+    cachedMachines = machines;
+    cacheTimestamp = Date.now();
+    console.log(`[scraper] Full cache ready: ${machines.length} machines (with details)`);
+  } catch (err) {
+    console.error("[scraper] Refresh failed:", err);
+  } finally {
+    isRefreshing = false;
+  }
+}
+
+// ── Pre-fetch on server start ──
+refreshCache();
+
+// ── Background refresh: check every 2 minutes ──
+setInterval(() => {
+  const age = Date.now() - cacheTimestamp;
+  if (age > CACHE_TTL - 2 * 60 * 1000) {
+    // Refresh 2 min before expiry so users never wait
+    refreshCache();
+  }
+}, 2 * 60 * 1000);
+
 export async function fetchAllMachines(): Promise<Machine[]> {
-  // Return cache if fresh
-  if (cachedMachines && Date.now() - cacheTimestamp < CACHE_TTL) {
+  // If cache exists, return immediately (even if stale — background refresh handles it)
+  if (cachedMachines) {
+    // Trigger background refresh if stale
+    if (Date.now() - cacheTimestamp > CACHE_TTL) {
+      refreshCache();
+    }
     return cachedMachines;
   }
 
-  const listItems = await fetchAllListItems();
-
-  // Fetch all detail pages in parallel (batched to avoid overwhelming the server)
-  const BATCH_SIZE = 10;
-  const machines: Machine[] = [];
-
-  for (let i = 0; i < listItems.length; i += BATCH_SIZE) {
-    const batch = listItems.slice(i, i + BATCH_SIZE);
-    const details = await Promise.all(
-      batch.map(async (item) => {
-        try {
-          const html = await fetchPage(`${FEED_BASE}?ad_id=${item.adId}`);
-          return parseDetailPage(html, item.adId);
-        } catch {
-          return {} as Partial<Machine>;
-        }
-      })
-    );
-
-    batch.forEach((item, idx) => {
-      const detail = details[idx];
-      const pics = detail.pictures && detail.pictures.length > 0
-        ? detail.pictures
-        : item.thumbnail ? [{ url: item.thumbnail, date: "" }] : [];
-
-      machines.push({
-        id: item.adId,
-        ad_id: item.adId,
-        sku: item.adId,
-        company_id: "1066",
-        title: item.title,
-        model: detail.model || item.title,
-        brand: detail.brand || "",
-        year: detail.year || "",
-        price: item.price,
-        currency: "DKK",
-        url: item.url,
-        pictures: pics,
-        category: buildCategories(item.categorySlugs),
-        description: detail.description || "",
-        contact: detail.contact || "",
-        address: detail.address || "",
-        extra_parameters: {},
-      });
-    });
-  }
-
-  cachedMachines = machines;
-  cacheTimestamp = Date.now();
-  return machines;
+  // First request ever — wait for data
+  await refreshCache();
+  return cachedMachines || [];
 }
 
 export async function fetchMachineById(id: number): Promise<Machine | undefined> {
