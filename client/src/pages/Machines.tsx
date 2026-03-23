@@ -2,7 +2,6 @@ import { useState, useEffect, useMemo } from 'react';
 import { Link } from 'wouter';
 import { Loader2, X, ChevronDown, ChevronRight } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent } from '@/components/ui/card';
 import Header from '@/components/Header';
 import Footer from '@/components/Footer';
 
@@ -252,38 +251,14 @@ export default function Machines() {
   }, [selectedCategory, categoryTree]);
 
   return (
-    <div className="min-h-screen bg-background flex flex-col">
+    <div className="min-h-screen bg-[#f5f5f5] flex flex-col">
       <Header />
 
-      <main className="flex-1">
-        {/* Hero with background image */}
-        <section className="relative h-[70vh] min-h-[450px] overflow-hidden">
-          <img
-            src="/hero-drone.jpg"
-            alt="CR Maskiner maskinplads"
-            className="absolute inset-0 w-full h-full object-cover"
-          />
-          <div className="absolute inset-0 bg-gradient-to-r from-[#1a2332]/90 via-[#1a2332]/70 to-[#1a2332]/40" />
-
-          <div className="relative h-full flex flex-col justify-center max-w-7xl mx-auto px-6 sm:px-8 lg:px-12">
-            <p className="text-sm uppercase tracking-widest text-white/50 font-semibold mb-3">
-              Altid 120+ på lager
-            </p>
-            <h1
-              className="font-display font-bold text-4xl sm:text-5xl lg:text-6xl text-white leading-[1.1] tracking-tight"
-              data-testid="text-page-title"
-            >
-              Brugte maskiner
-            </h1>
-            <p className="mt-4 text-lg text-white/70 max-w-xl">
-              Til omgående levering. Alle priser er ekskl. moms — forbehold for mellemsalg.
-            </p>
-          </div>
-        </section>
-
-        <div className="sticky top-[108px] z-40 bg-white border-b border-border shadow-sm">
-          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
+      <main className="flex-1 pt-[72px]">
+        <div className="sticky top-[72px] z-40 bg-white border-b border-gray-200">
+          <div className="max-w-[1360px] mx-auto px-5 sm:px-8 py-4">
             <div className="flex flex-wrap items-center gap-3">
+              <h1 className="font-serif text-[22px] text-[#1a1a1a] mr-4">Maskiner til salg</h1>
               <div className="relative">
                 <Button
                   variant="outline"
@@ -404,7 +379,7 @@ export default function Machines() {
           </div>
         </div>
 
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        <div className="max-w-[1360px] mx-auto px-5 sm:px-8 py-8">
           {loading ? (
             <div className="flex justify-center items-center py-20">
               <Loader2 className="w-8 h-8 animate-spin text-primary" />
@@ -413,56 +388,53 @@ export default function Machines() {
             <>
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
                 {filteredMachines.map((machine) => (
-                  <Card
+                  <Link
                     key={machine.id}
-                    className="group overflow-hidden hover:shadow-lg transition-all duration-300 border-0 shadow-sm bg-white"
+                    href={`/maskine/${machine.id}`}
+                    className="group"
                     data-testid={`card-machine-${machine.id}`}
                   >
-                    <div className="aspect-[4/3] relative overflow-hidden bg-slate-100">
-                      {machine.pictures?.[0]?.url ? (
-                        <img
-                          src={machine.pictures[0].url}
-                          alt={machine.title}
-                          className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
-                          loading="lazy"
-                        />
-                      ) : (
-                        <div className="w-full h-full flex items-center justify-center text-muted-foreground">
-                          Ingen billede
+                    <div className="bg-white rounded-2xl overflow-hidden shadow-sm hover:shadow-lg transition-all duration-300">
+                      <div className="aspect-[4/3] relative overflow-hidden bg-gray-100">
+                        {machine.pictures?.[0]?.url ? (
+                          <img
+                            src={machine.pictures[0].url}
+                            alt={machine.title}
+                            className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
+                            loading="lazy"
+                          />
+                        ) : (
+                          <div className="w-full h-full flex items-center justify-center text-gray-400">
+                            Ingen billede
+                          </div>
+                        )}
+                        <div className="absolute top-3 left-3">
+                          <span className="bg-white/95 backdrop-blur-sm text-[12px] font-semibold px-2.5 py-1 rounded-full text-[#1a1a1a]">
+                            {machine.year}
+                          </span>
                         </div>
-                      )}
-                      <div className="absolute top-3 left-3">
-                        <span className="bg-white/95 backdrop-blur text-xs font-medium px-2 py-1 rounded text-foreground">
-                          {machine.year}
-                        </span>
                       </div>
-                    </div>
-                    <CardContent className="p-4">
-                      <div className="mb-2">
-                        <span className="text-xs text-muted-foreground font-medium uppercase tracking-wide">
+                      <div className="p-4">
+                        <span className="text-[11px] text-gray-400 font-semibold uppercase tracking-wider">
                           {machine.brand}
                         </span>
-                      </div>
-                      <h3 className="font-semibold text-foreground mb-3 line-clamp-2 leading-snug" data-testid={`text-machine-title-${machine.id}`}>
-                        {machine.title}
-                      </h3>
-                      <div className="flex items-end justify-between pt-3 border-t border-gray-100">
-                        <div>
-                          <span className="font-bold text-lg text-foreground" data-testid={`text-machine-price-${machine.id}`}>
-                            {formatPrice(machine.price)} kr
+                        <h3 className="font-semibold text-[#1a1a1a] text-[15px] mt-1 mb-3 line-clamp-2 leading-snug group-hover:text-[#1a7a3a] transition-colors">
+                          {machine.title}
+                        </h3>
+                        <div className="flex items-end justify-between pt-3 border-t border-gray-100">
+                          <div>
+                            <span className="font-bold text-[17px] text-[#1a1a1a]" data-testid={`text-machine-price-${machine.id}`}>
+                              {formatPrice(machine.price)} kr
+                            </span>
+                            <span className="text-[11px] text-gray-400 block mt-0.5">ekskl. moms</span>
+                          </div>
+                          <span className="text-[13px] font-semibold text-[#1a7a3a] group-hover:underline">
+                            Se mere →
                           </span>
-                          <span className="text-xs text-muted-foreground block">ekskl. moms</span>
                         </div>
-                        <Link
-                          href={`/maskine/${machine.id}`}
-                          className="text-sm font-semibold text-foreground hover:underline"
-                          data-testid={`link-machine-${machine.id}`}
-                        >
-                          Læs mere
-                        </Link>
                       </div>
-                    </CardContent>
-                  </Card>
+                    </div>
+                  </Link>
                 ))}
               </div>
 
